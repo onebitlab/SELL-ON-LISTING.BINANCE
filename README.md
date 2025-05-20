@@ -1,4 +1,4 @@
-# 🚀 Binance sell on listing Bot
+# 🚀 Binance sell on listing script
 
 This Python script monitors a new token listing on Binance and automatically places a limit sell order **at a configurable price below the market price**. Ideal for quickly selling newly listed tokens at a favorable price.
 
