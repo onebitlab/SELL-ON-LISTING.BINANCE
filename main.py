@@ -13,7 +13,7 @@ from colorama import init, Fore, Style
 init(autoreset=True)
 
 # --- USER INPUT ---
-pair = input("Enter trading pair (e.g., ZKUSDT): ").strip().upper()
+pair = input("Enter trading pair (e.g., ALTUSDT): ").strip().upper()
 coins_for_sale = Decimal(input("Enter number of tokens to sell: "))
 price_offset_percent = Decimal(input("Enter price offset percentage (e.g., 1.0): "))
 order_timeout_seconds = 30  # Cancel order if not filled within this time
@@ -31,6 +31,24 @@ def log_warning(message):
 def log_error(message):
     print(f"{Fore.RED}[ERROR]{Style.RESET_ALL} {message}")
 
+def print_order_details(order):
+    print("-" * 37)
+    print(f"Symbol       : {order['symbol']}")
+    print(f"Order ID     : {order['orderId']}")
+    print(f"Status       : {order['status']}")
+    print(f"Type         : {order['type']}")
+    print(f"Side         : {order['side']}")
+    print(f"Quantity     : {order['origQty']}")
+    print(f"Price        : {order['price']}")
+    print(f"Filled Qty   : {order['executedQty']}")
+    print(f"Total USDT   : {order['cummulativeQuoteQty']}")
+    print(f"Time in Force: {order['timeInForce']}")
+    print()
+    print("Fills:")
+    for fill in order.get('fills', []):
+        print(f"  - Price: {fill['price']}, Qty: {fill['qty']}, Commission: {fill['commission']} {fill['commissionAsset']}")
+    print("-" * 37)
+
 async def wait_for_pair_listing(client, symbol):
     log_info(f"Waiting for listing of pair {symbol} via REST API...")
     while True:
@@ -39,12 +57,12 @@ async def wait_for_pair_listing(client, symbol):
             listed_symbols = [s['symbol'] for s in info['symbols']]
             if symbol in listed_symbols:
                 log_success(f"Pair {symbol} found on Binance!")
-                return info  # Return full exchangeInfo for later use
+                return info
             else:
-                await asyncio.sleep(1)
+                await asyncio.sleep(0.5)
         except Exception as e:
             log_error(f"Error querying /exchangeInfo: {e}, retrying in 1 sec...")
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.5)
 
 async def get_current_price(client, symbol):
     try:
@@ -70,6 +88,7 @@ async def wait_for_order_fill_or_timeout(client, symbol, order_id, timeout):
             order = await client.get_order(symbol=symbol, orderId=order_id)
             if order['status'] == 'FILLED':
                 log_success(f"Order {order_id} filled! Sale completed.")
+                print_order_details(order)
                 return
             elif order['status'] in ['CANCELED', 'REJECTED', 'EXPIRED']:
                 log_warning(f"Order {order_id} ended with status: {order['status']}")
@@ -78,10 +97,10 @@ async def wait_for_order_fill_or_timeout(client, symbol, order_id, timeout):
                 log_info(f"Timeout reached. Cancelling order {order_id}...")
                 await client.cancel_order(symbol=symbol, orderId=order_id)
                 return
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.5)
         except Exception as e:
             log_warning(f"Error checking order status: {e}")
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.5)
 
 async def get_price_filter_precision(symbol_info):
     for f in symbol_info['filters']:
@@ -89,7 +108,7 @@ async def get_price_filter_precision(symbol_info):
             tick_size = Decimal(f['tickSize'])
             precision = abs(tick_size.normalize().as_tuple().exponent)
             return precision
-    return 6  # fallback
+    return 6
 
 async def main():
     client = await AsyncClient.create(api_key, api_secret)
@@ -114,7 +133,6 @@ async def main():
         offset = (current_price * price_offset_percent / Decimal('100'))
         target_price = current_price - offset
 
-        # Round price to allowed precision from PRICE_FILTER
         for s in exchange_info['symbols']:
             if s['symbol'] == pair:
                 price_precision = await get_price_filter_precision(s)
@@ -135,14 +153,14 @@ async def main():
                     quantity=float(quantity),
                     price=str(target_price)
                 )
-                log_success(f"Order placed: {order}")
+                log_success("Order placed successfully!")
                 break
             except BinanceAPIException as e:
                 log_error(f"Order placement error: {e.status_code} {e.code} {e.message}")
                 if attempt == retries:
                     log_error("All order attempts failed. Exiting.")
                     return
-                await asyncio.sleep(1)
+                await asyncio.sleep(0.5)
 
         if order:
             await wait_for_order_fill_or_timeout(client, pair, order['orderId'], order_timeout_seconds)
