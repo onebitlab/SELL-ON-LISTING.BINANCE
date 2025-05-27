@@ -30,6 +30,11 @@ Create a file named `config.py` in the project root:
 # config.py
 api_key = 'your_binance_api_key'
 api_secret = 'your_binance_api_secret'
+pair = "ALTUSDT"
+coins_for_sale = "100"
+price_offset_percent = "1.0"
+order_timeout_seconds = 30            # Timeout before canceling limit order (in seconds)
+pair_check_interval_seconds = 0.5     # Interval to check if pair is listed (in seconds)
 ```
 
 Make sure your API key has **trading permissions enabled**.
@@ -43,13 +48,6 @@ Run the script:
 ```bash
 python main.py
 ```
-
-You’ll be prompted to enter:
-
-- **Trading pair** (e.g. `ALTUSDT`)
-- **Amount of tokens** to sell (e.g. `12.5`)
-- **Price offset** percentage (e.g. `1` for 1% below current price)
-
 
 ## 📄 License
 
