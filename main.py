@@ -1,23 +1,30 @@
 import asyncio
-import json
-import aiohttp
 import os
 import sys
 from decimal import Decimal, ROUND_DOWN
 from binance import AsyncClient
 from binance.exceptions import BinanceAPIException, BinanceRequestException
-from config import api_key, api_secret
+from config import (
+    api_key,
+    api_secret,
+    pair as cfg_pair,
+    coins_for_sale as cfg_coins,
+    price_offset_percent as cfg_offset,
+    order_timeout_seconds as cfg_timeout,
+    pair_check_interval_seconds as cfg_pair_check_interval
+)
 from colorama import init, Fore, Style
 
 # Initialize colorama
 init(autoreset=True)
 
-# --- USER INPUT ---
-pair = input("Enter trading pair (e.g., ALTUSDT): ").strip().upper()
-coins_for_sale = Decimal(input("Enter number of tokens to sell: "))
-price_offset_percent = Decimal(input("Enter price offset percentage (e.g., 1.0): "))
-order_timeout_seconds = 30  # Cancel order if not filled within this time
-# --- END ---
+# --- CONFIG INPUT ---
+pair = cfg_pair.strip().upper()
+coins_for_sale = Decimal(cfg_coins)
+price_offset_percent = Decimal(cfg_offset)
+order_timeout_seconds = int(cfg_timeout)
+pair_check_interval = float(cfg_pair_check_interval)
+# --- END CONFIG ---
 
 def log_info(message):
     print(f"{Fore.CYAN}[INFO]{Style.RESET_ALL} {message}")
@@ -50,7 +57,7 @@ def print_order_details(order):
     print("-" * 37)
 
 async def wait_for_pair_listing(client, symbol):
-    log_info(f"Waiting for listing of pair {symbol} via REST API...")
+    log_info(f"Waiting for listing of pair {symbol} every {pair_check_interval} sec...")
     while True:
         try:
             info = await client.get_exchange_info()
@@ -59,10 +66,10 @@ async def wait_for_pair_listing(client, symbol):
                 log_success(f"Pair {symbol} found on Binance!")
                 return info
             else:
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(pair_check_interval)
         except Exception as e:
-            log_error(f"Error querying /exchangeInfo: {e}, retrying in 1 sec...")
-            await asyncio.sleep(0.5)
+            log_error(f"Error querying /exchangeInfo: {e}, retrying in {pair_check_interval} sec...")
+            await asyncio.sleep(pair_check_interval)
 
 async def get_current_price(client, symbol):
     try:
