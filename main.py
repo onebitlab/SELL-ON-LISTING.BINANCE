@@ -2,7 +2,6 @@ import asyncio
 import os
 import sys
 from decimal import Decimal, ROUND_DOWN
-from datetime import datetime, timezone, timedelta
 from binance import AsyncClient
 from binance.exceptions import BinanceAPIException, BinanceRequestException
 from config import (
@@ -13,9 +12,11 @@ from config import (
     price_offset_percent as cfg_offset,
     order_timeout_seconds as cfg_timeout,
     pair_check_interval_seconds as cfg_pair_check_interval,
-    launch_time_str
+    launch_time as cfg_launch_time
 )
 from colorama import init, Fore, Style
+from datetime import datetime, timedelta
+import pytz
 
 # Initialize colorama
 init(autoreset=True)
@@ -26,7 +27,8 @@ coins_for_sale = Decimal(cfg_coins)
 price_offset_percent = Decimal(cfg_offset)
 order_timeout_seconds = int(cfg_timeout)
 pair_check_interval = float(cfg_pair_check_interval)
-launch_time = datetime.strptime(launch_time_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+launch_time = datetime.strptime(cfg_launch_time, "%Y-%m-%d %H:%M:%S")
+launch_time_utc = pytz.UTC.localize(launch_time)
 # --- END CONFIG ---
 
 def log_info(message):
@@ -59,35 +61,6 @@ def print_order_details(order):
         print(f"  - Price: {fill['price']}, Qty: {fill['qty']}, Commission: {fill['commission']} {fill['commissionAsset']}")
     print("-" * 37)
 
-async def wait_until_launch():
-    while True:
-        now = datetime.now(timezone.utc)
-        seconds_left = (launch_time - now).total_seconds()
-        if seconds_left <= 10:
-            print(f"{Fore.CYAN}[INFO]{Style.RESET_ALL} Launch time is in {int(seconds_left)} seconds. Checking for listing now...")
-            break
-        else:
-            hours, remainder = divmod(int(seconds_left), 3600)
-            minutes, seconds = divmod(remainder, 60)
-            time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-            print(f"{Fore.CYAN}[INFO]{Style.RESET_ALL} Waiting for launch: {time_str} remaining")
-        await asyncio.sleep(1)
-
-async def wait_for_pair_listing(client, symbol):
-    log_info(f"Waiting for listing of pair {symbol} every {pair_check_interval} sec...")
-    while True:
-        try:
-            info = await client.get_exchange_info()
-            listed_symbols = [s['symbol'] for s in info['symbols']]
-            if symbol in listed_symbols:
-                log_success(f"Pair {symbol} found on Binance!")
-                return info
-            else:
-                await asyncio.sleep(pair_check_interval)
-        except Exception as e:
-            log_error(f"Error querying /exchangeInfo: {e}, retrying in {pair_check_interval} sec...")
-            await asyncio.sleep(pair_check_interval)
-
 async def get_current_price(client, symbol):
     try:
         ticker = await client.get_symbol_ticker(symbol=symbol)
@@ -95,14 +68,6 @@ async def get_current_price(client, symbol):
     except Exception as e:
         log_error(f"Error getting current price: {e}")
         return Decimal('0')
-
-async def check_balance(client, symbol):
-    base_asset = symbol.replace('USDT', '')
-    account = await client.get_account()
-    for b in account['balances']:
-        if b['asset'] == base_asset:
-            return Decimal(b['free'])
-    return Decimal('0')
 
 async def wait_for_order_fill_or_timeout(client, symbol, order_id, timeout):
     log_info(f"Waiting for order {order_id} to fill or timeout in {timeout} sec...")
@@ -134,19 +99,47 @@ async def get_price_filter_precision(symbol_info):
             return precision
     return 6
 
+async def wait_for_pair_listing(client, symbol):
+    log_info(f"Waiting for listing of pair {symbol} every {pair_check_interval} sec...")
+    while True:
+        try:
+            info = await client.get_exchange_info()
+            listed_symbols = [s['symbol'] for s in info['symbols']]
+            if symbol in listed_symbols:
+                log_success(f"Pair {symbol} found on Binance!")
+                return info
+            else:
+                await asyncio.sleep(pair_check_interval)
+        except Exception as e:
+            log_error(f"Error querying /exchangeInfo: {e}, retrying in {pair_check_interval} sec...")
+            await asyncio.sleep(pair_check_interval)
+
+async def wait_until_launch():
+    binance_time = await AsyncClient.get_server_time()
+    server_now = datetime.utcfromtimestamp(binance_time["serverTime"] / 1000).replace(tzinfo=pytz.UTC)
+    wait_until = launch_time_utc - timedelta(seconds=10)
+
+    if server_now >= wait_until:
+        log_info("Launch time already reached or close. Skipping wait.")
+        return
+
+    while server_now < wait_until:
+        remaining = wait_until - server_now
+        h, m, s = str(remaining).split(":")
+        print(f"{Fore.CYAN}[INFO]{Style.RESET_ALL} Waiting for launch: {h.zfill(2)}:{m}:{s.split('.')[0]}", end="\r")
+        await asyncio.sleep(1)
+        server_now = datetime.utcnow().replace(tzinfo=pytz.UTC)
+
+    print()
+    log_info("10 seconds left until launch time. Starting to check listing...")
+
 async def main():
     client = await AsyncClient.create(api_key, api_secret)
     try:
         await wait_until_launch()
 
         exchange_info = await wait_for_pair_listing(client, pair)
-
-        current_price_task = get_current_price(client, pair)
-        balance_task = check_balance(client, pair)
-
-        current_price, balance = await asyncio.gather(
-            current_price_task, balance_task
-        )
+        current_price = await get_current_price(client, pair)
 
         if current_price == 0:
             log_warning("Could not retrieve current price. Restarting script...")
@@ -161,7 +154,7 @@ async def main():
                 target_price = target_price.quantize(Decimal(f'1e-{price_precision}'), rounding=ROUND_DOWN)
                 break
 
-        quantity = min(balance, coins_for_sale)
+        quantity = coins_for_sale
 
         log_info(f"Placing order at {target_price} USDT (current: {current_price})...")
 
