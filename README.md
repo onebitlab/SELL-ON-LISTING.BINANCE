@@ -40,7 +40,7 @@ price_offset_percent = "1.0"        # Percent below market price (e.g., 1.0 mean
 # Timing
 order_timeout_seconds = 30          # Cancel order after this many seconds if not filled
 pair_check_interval_seconds = 0.5   # Interval (in sec) between trade pair availability checks
-launch_time = "2025-05-29 12:00:00" # Exact time trading is expected to start (UTC)
+launch_time_str = "2025-05-29 12:00:00" # Exact time trading is expected to start (UTC)
 ```
 
 > ✅ Make sure your API key has **trading permissions enabled**.

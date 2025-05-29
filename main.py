@@ -1,7 +1,9 @@
 import asyncio
 import os
 import sys
+from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_DOWN
+import pytz
 from binance import AsyncClient
 from binance.exceptions import BinanceAPIException, BinanceRequestException
 from config import (
@@ -12,11 +14,9 @@ from config import (
     price_offset_percent as cfg_offset,
     order_timeout_seconds as cfg_timeout,
     pair_check_interval_seconds as cfg_pair_check_interval,
-    launch_time as cfg_launch_time
+    launch_time_str
 )
 from colorama import init, Fore, Style
-from datetime import datetime, timedelta
-import pytz
 
 # Initialize colorama
 init(autoreset=True)
@@ -27,9 +27,9 @@ coins_for_sale = Decimal(cfg_coins)
 price_offset_percent = Decimal(cfg_offset)
 order_timeout_seconds = int(cfg_timeout)
 pair_check_interval = float(cfg_pair_check_interval)
-launch_time = datetime.strptime(cfg_launch_time, "%Y-%m-%d %H:%M:%S")
-launch_time_utc = pytz.UTC.localize(launch_time)
+launch_time_utc = datetime.strptime(launch_time_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=pytz.UTC)
 # --- END CONFIG ---
+
 
 def log_info(message):
     print(f"{Fore.CYAN}[INFO]{Style.RESET_ALL} {message}")
@@ -61,6 +61,44 @@ def print_order_details(order):
         print(f"  - Price: {fill['price']}, Qty: {fill['qty']}, Commission: {fill['commission']} {fill['commissionAsset']}")
     print("-" * 37)
 
+
+async def wait_until_launch(client):
+    binance_time = await client.get_server_time()
+    server_now = datetime.utcfromtimestamp(binance_time["serverTime"] / 1000).replace(tzinfo=pytz.UTC)
+    wait_until = launch_time_utc - timedelta(seconds=10)
+
+    if server_now >= wait_until:
+        log_info("Launch time already reached or close. Skipping wait.")
+        return
+
+    while server_now < wait_until:
+        remaining = wait_until - server_now
+        h, m, s = str(remaining).split(":")
+        print(f"{Fore.CYAN}[INFO]{Style.RESET_ALL} Waiting for launch: {h.zfill(2)}:{m}:{s.split('.')[0]}", end="\r")
+        await asyncio.sleep(1)
+        binance_time = await client.get_server_time()
+        server_now = datetime.utcfromtimestamp(binance_time["serverTime"] / 1000).replace(tzinfo=pytz.UTC)
+
+    print()
+    log_info("10 seconds left until launch time. Starting to check listing...")
+
+
+async def wait_for_pair_listing(client, symbol):
+    log_info(f"Waiting for pair {symbol} to be listed (every {pair_check_interval}s)...")
+    while True:
+        try:
+            info = await client.get_exchange_info()
+            listed_symbols = [s['symbol'] for s in info['symbols']]
+            if symbol in listed_symbols:
+                log_success(f"Pair {symbol} found on Binance!")
+                return info
+            else:
+                await asyncio.sleep(pair_check_interval)
+        except Exception as e:
+            log_error(f"Error querying exchange info: {e}. Retrying in {pair_check_interval}s...")
+            await asyncio.sleep(pair_check_interval)
+
+
 async def get_current_price(client, symbol):
     try:
         ticker = await client.get_symbol_ticker(symbol=symbol)
@@ -69,14 +107,15 @@ async def get_current_price(client, symbol):
         log_error(f"Error getting current price: {e}")
         return Decimal('0')
 
+
 async def wait_for_order_fill_or_timeout(client, symbol, order_id, timeout):
-    log_info(f"Waiting for order {order_id} to fill or timeout in {timeout} sec...")
+    log_info(f"Waiting for order {order_id} to fill or timeout in {timeout} seconds...")
     start = asyncio.get_event_loop().time()
     while True:
         try:
             order = await client.get_order(symbol=symbol, orderId=order_id)
             if order['status'] == 'FILLED':
-                log_success(f"Order {order_id} filled! Sale completed.")
+                log_success(f"Order {order_id} filled successfully.")
                 print_order_details(order)
                 return
             elif order['status'] in ['CANCELED', 'REJECTED', 'EXPIRED']:
@@ -91,6 +130,7 @@ async def wait_for_order_fill_or_timeout(client, symbol, order_id, timeout):
             log_warning(f"Error checking order status: {e}")
             await asyncio.sleep(0.5)
 
+
 async def get_price_filter_precision(symbol_info):
     for f in symbol_info['filters']:
         if f['filterType'] == 'PRICE_FILTER':
@@ -99,53 +139,19 @@ async def get_price_filter_precision(symbol_info):
             return precision
     return 6
 
-async def wait_for_pair_listing(client, symbol):
-    log_info(f"Waiting for listing of pair {symbol} every {pair_check_interval} sec...")
-    while True:
-        try:
-            info = await client.get_exchange_info()
-            listed_symbols = [s['symbol'] for s in info['symbols']]
-            if symbol in listed_symbols:
-                log_success(f"Pair {symbol} found on Binance!")
-                return info
-            else:
-                await asyncio.sleep(pair_check_interval)
-        except Exception as e:
-            log_error(f"Error querying /exchangeInfo: {e}, retrying in {pair_check_interval} sec...")
-            await asyncio.sleep(pair_check_interval)
-
-async def wait_until_launch():
-    binance_time = await AsyncClient.get_server_time()
-    server_now = datetime.utcfromtimestamp(binance_time["serverTime"] / 1000).replace(tzinfo=pytz.UTC)
-    wait_until = launch_time_utc - timedelta(seconds=10)
-
-    if server_now >= wait_until:
-        log_info("Launch time already reached or close. Skipping wait.")
-        return
-
-    while server_now < wait_until:
-        remaining = wait_until - server_now
-        h, m, s = str(remaining).split(":")
-        print(f"{Fore.CYAN}[INFO]{Style.RESET_ALL} Waiting for launch: {h.zfill(2)}:{m}:{s.split('.')[0]}", end="\r")
-        await asyncio.sleep(1)
-        server_now = datetime.utcnow().replace(tzinfo=pytz.UTC)
-
-    print()
-    log_info("10 seconds left until launch time. Starting to check listing...")
 
 async def main():
     client = await AsyncClient.create(api_key, api_secret)
     try:
-        await wait_until_launch()
-
+        await wait_until_launch(client)
         exchange_info = await wait_for_pair_listing(client, pair)
         current_price = await get_current_price(client, pair)
 
         if current_price == 0:
-            log_warning("Could not retrieve current price. Restarting script...")
+            log_warning("Could not retrieve price. Restarting script...")
             os.execv(sys.executable, [sys.executable] + sys.argv)
 
-        offset = (current_price * price_offset_percent / Decimal('100'))
+        offset = current_price * price_offset_percent / Decimal('100')
         target_price = current_price - offset
 
         for s in exchange_info['symbols']:
@@ -155,35 +161,27 @@ async def main():
                 break
 
         quantity = coins_for_sale
+        log_info(f"Placing limit sell order at {target_price} USDT (market: {current_price})...")
 
-        log_info(f"Placing order at {target_price} USDT (current: {current_price})...")
-
-        order = None
         retries = 3
         for attempt in range(1, retries + 1):
             try:
-                log_info(f"Attempting to place order {attempt}/{retries}...")
+                log_info(f"Placing order (attempt {attempt}/{retries})...")
                 order = await client.order_limit_sell(
                     symbol=pair,
                     quantity=float(quantity),
                     price=str(target_price)
                 )
                 log_success("Order placed successfully!")
+                await wait_for_order_fill_or_timeout(client, pair, order['orderId'], order_timeout_seconds)
                 break
             except BinanceAPIException as e:
-                log_error(f"Order placement error: {e.status_code} {e.code} {e.message}")
+                log_error(f"API error: {e.status_code} {e.code} {e.message}")
                 if attempt == retries:
                     log_error("All order attempts failed. Exiting.")
                     return
                 await asyncio.sleep(0.5)
 
-        if order:
-            await wait_for_order_fill_or_timeout(client, pair, order['orderId'], order_timeout_seconds)
-
-    except BinanceAPIException as e:
-        log_error(f"Binance API error: {e.status_code} {e.code} {e.message}")
-    except BinanceRequestException as e:
-        log_error(f"Binance API request error: {e}")
     except Exception as e:
         log_error(f"General error: {e}")
     finally:
