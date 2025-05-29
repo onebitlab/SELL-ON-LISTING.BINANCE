@@ -2,6 +2,7 @@ import asyncio
 import os
 import sys
 from decimal import Decimal, ROUND_DOWN
+from datetime import datetime, timezone, timedelta
 from binance import AsyncClient
 from binance.exceptions import BinanceAPIException, BinanceRequestException
 from config import (
@@ -11,7 +12,8 @@ from config import (
     coins_for_sale as cfg_coins,
     price_offset_percent as cfg_offset,
     order_timeout_seconds as cfg_timeout,
-    pair_check_interval_seconds as cfg_pair_check_interval
+    pair_check_interval_seconds as cfg_pair_check_interval,
+    launch_time_str
 )
 from colorama import init, Fore, Style
 
@@ -24,6 +26,7 @@ coins_for_sale = Decimal(cfg_coins)
 price_offset_percent = Decimal(cfg_offset)
 order_timeout_seconds = int(cfg_timeout)
 pair_check_interval = float(cfg_pair_check_interval)
+launch_time = datetime.strptime(launch_time_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
 # --- END CONFIG ---
 
 def log_info(message):
@@ -55,6 +58,20 @@ def print_order_details(order):
     for fill in order.get('fills', []):
         print(f"  - Price: {fill['price']}, Qty: {fill['qty']}, Commission: {fill['commission']} {fill['commissionAsset']}")
     print("-" * 37)
+
+async def wait_until_launch():
+    while True:
+        now = datetime.now(timezone.utc)
+        seconds_left = (launch_time - now).total_seconds()
+        if seconds_left <= 10:
+            print(f"{Fore.CYAN}[INFO]{Style.RESET_ALL} Launch time is in {int(seconds_left)} seconds. Checking for listing now...")
+            break
+        else:
+            hours, remainder = divmod(int(seconds_left), 3600)
+            minutes, seconds = divmod(remainder, 60)
+            time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+            print(f"{Fore.CYAN}[INFO]{Style.RESET_ALL} Waiting for launch: {time_str} remaining")
+        await asyncio.sleep(1)
 
 async def wait_for_pair_listing(client, symbol):
     log_info(f"Waiting for listing of pair {symbol} every {pair_check_interval} sec...")
@@ -120,6 +137,8 @@ async def get_price_filter_precision(symbol_info):
 async def main():
     client = await AsyncClient.create(api_key, api_secret)
     try:
+        await wait_until_launch()
+
         exchange_info = await wait_for_pair_listing(client, pair)
 
         current_price_task = get_current_price(client, pair)
@@ -132,10 +151,6 @@ async def main():
         if current_price == 0:
             log_warning("Could not retrieve current price. Restarting script...")
             os.execv(sys.executable, [sys.executable] + sys.argv)
-
-        if balance < Decimal('0.00000001'):
-            log_warning(f"No available {pair.replace('USDT', '')} for sale. Balance: {balance}")
-            return
 
         offset = (current_price * price_offset_percent / Decimal('100'))
         target_price = current_price - offset
