@@ -1,18 +1,18 @@
-# 🚀 Binance sell on listing script
+# 🚀 Binance Sell on Listing Script
 
-This Python script monitors a new token listing on Binance and automatically places a limit sell order **at a configurable price below the market price**. Ideal for quickly selling newly listed tokens at a favorable price.
+This Python script automatically places a **limit sell order** immediately after a new token is listed on Binance, at a configurable price below the market. It is optimized for **speed**, **precision**, and **safety** during high-volatility listing events.
 
-> ⚡️ Built using **asynchronous programming (async/await)** to achieve **maximum speed** and minimal latency during listing events.
+> ⚡️ Built using **asynchronous programming (`async/await`)** for maximum responsiveness with the Binance API.
 
 ---
 
 ## ✅ Features
 
-- The script waits until the specified trading pair is listed on BINANCE (via REST API).
-- It retrieves your token balance and current market price.
-- It applies a configurable percentage offset (e.g. -1%) to determine the target price.
-- It places a **limit sell order** BELOW current price using async API calls.
-- If the order isn't filled within the timeout (default: 30 seconds), it is cancelled.
+- ⏰ Starts checking the listing **10 seconds before** your specified launch time.
+- 🕒 Synchronizes local time with **Binance server time** to avoid clock drift.
+- 🔄 Continuously checks for trading pair availability via **Binance REST API**.
+- 💰 Automatically places a **limit sell order** at a price below market (offset configurable).
+- 🔍 If the order isn’t filled within a timeout (default: 30 seconds), it is cancelled.
 
 ---
 
@@ -24,31 +24,46 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
-Create a file named `config.py` in the project root:
+Create a `config.py` file in the root directory with your preferences:
 
 ```python
 # config.py
+
 api_key = 'your_binance_api_key'
 api_secret = 'your_binance_api_secret'
-pair = "ALTUSDT"
-coins_for_sale = "100"
-price_offset_percent = "1.0"
-order_timeout_seconds = 30            # Timeout before canceling limit order (in seconds)
-pair_check_interval_seconds = 0.5     # Interval to check if pair is listed (in seconds)
+
+# Trading configuration
+pair = "ALTUSDT"                     # Example: 'SOMETOKENUSDT'
+coins_for_sale = "100"              # Amount of tokens to sell
+price_offset_percent = "1.0"        # Percent below market price (e.g., 1.0 means 1% below)
+
+# Timing
+order_timeout_seconds = 30          # Cancel order after this many seconds if not filled
+pair_check_interval_seconds = 0.5   # Interval (in sec) between symbol availability checks
+launch_time = "2025-05-29 12:00:00" # Exact time trading is expected to start (UTC)
 ```
 
-Make sure your API key has **trading permissions enabled**.
+> ✅ Make sure your API key has **trading permissions enabled**.
 
 ---
 
 ## ▶️ Usage
 
-Run the script:
+Simply run:
 
 ```bash
 python main.py
 ```
 
+---
+
+## 🛠 Notes
+
+- Time format for `launch_time` must be `"YYYY-MM-DD HH:MM:SS"` in **UTC**.
+- If you launch the bot after the listing time has passed, it will immediately begin checking for the pair.
+
+---
+
 ## 📄 License
 
-MIT License. Free to use and modify.
+MIT License — free to use, modify, and distribute.
