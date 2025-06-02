@@ -17,6 +17,7 @@ from config import (
     launch_time_str
 )
 from colorama import init, Fore, Style
+from tabulate import tabulate  # Добавьте импорт в начало файла
 
 # Initialize colorama
 init(autoreset=True)
@@ -44,21 +45,32 @@ def log_error(message):
     print(f"{Fore.RED}[ERROR]{Style.RESET_ALL} {message}")
 
 def print_order_details(order):
+    order_table = [
+        ["Symbol", order['symbol']],
+        ["Order ID", order['orderId']],
+        ["Status", order['status']],
+        ["Type", order['type']],
+        ["Side", order['side']],
+        ["Quantity", order['origQty']],
+        ["Price", order['price']],
+        ["Filled Qty", order['executedQty']],
+        ["Total USDT", order['cummulativeQuoteQty']],
+        ["Time in Force", order['timeInForce']],
+    ]
     print("-" * 37)
-    print(f"Symbol       : {order['symbol']}")
-    print(f"Order ID     : {order['orderId']}")
-    print(f"Status       : {order['status']}")
-    print(f"Type         : {order['type']}")
-    print(f"Side         : {order['side']}")
-    print(f"Quantity     : {order['origQty']}")
-    print(f"Price        : {order['price']}")
-    print(f"Filled Qty   : {order['executedQty']}")
-    print(f"Total USDT   : {order['cummulativeQuoteQty']}")
-    print(f"Time in Force: {order['timeInForce']}")
-    print()
-    print("Fills:")
-    for fill in order.get('fills', []):
-        print(f"  - Price: {fill['price']}, Qty: {fill['qty']}, Commission: {fill['commission']} {fill['commissionAsset']}")
+    print(tabulate(order_table, tablefmt="fancy_grid"))
+    fills = order.get('fills', [])
+    if fills:
+        print("\nFills:")
+        fills_table = [
+            [f['price'], f['qty'], f['commission'], f['commissionAsset']]
+            for f in fills
+        ]
+        print(tabulate(
+            fills_table,
+            headers=["Price", "Qty", "Commission", "Asset"],
+            tablefmt="github"
+        ))
     print("-" * 37)
 
 
@@ -179,6 +191,12 @@ async def main():
                 log_error(f"API error: {e.status_code} {e.code} {e.message}")
                 if attempt == retries:
                     log_error("All order attempts failed. Exiting.")
+                    return
+                await asyncio.sleep(0.5)
+            except BinanceRequestException as e:
+                log_error(f"Request error: {e}")
+                if attempt == retries:
+                    log_error("All order attempts failed due to request errors. Exiting.")
                     return
                 await asyncio.sleep(0.5)
 

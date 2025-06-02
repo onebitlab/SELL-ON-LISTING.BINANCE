@@ -1,3 +1,4 @@
-python-binance
+binance-async
 colorama
-aiohttp
+pytz
+tabulate
