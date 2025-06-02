@@ -17,7 +17,7 @@ from config import (
     launch_time_str
 )
 from colorama import init, Fore, Style
-from tabulate import tabulate  # Добавьте импорт в начало файла
+from tabulate import tabulate
 
 # Initialize colorama
 init(autoreset=True)
