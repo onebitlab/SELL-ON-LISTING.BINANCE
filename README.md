@@ -1,9 +1,10 @@
-🚀 Binance Sell on Listing Script
+🚀 Binance Sell on Listing Bot
 This Python script automatically places a limit sell order immediately after a new token is listed on Binance, at a configurable price below the market. It's built for speed, precision, and safety during high-volatility listing events.
 
 ⚡️ Built using asynchronous programming (async/await) for maximum responsiveness with the Binance API, ensuring graceful handling of operations.
 
 ✅ Features
+
 🕒 Synchronizes local time with Binance server time to avoid clock drift, using modern datetime practices to avoid deprecation warnings.
 
 ⏰ Starts checking the listing 10 seconds before your specified launch time.
