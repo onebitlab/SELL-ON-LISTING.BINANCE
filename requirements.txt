@@ -1,4 +1,4 @@
-binance-async
-colorama
+python-binance
 pytz
+colorama
 tabulate
