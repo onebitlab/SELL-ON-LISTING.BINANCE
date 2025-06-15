@@ -76,3 +76,9 @@ python main.py
 MIT License — free to use, modify, and distribute.
 
 ---
+
+## 🛑 Disclaimer
+
+Cryptocurrency trading carries significant risks and may result in the loss of capital. Use this bot at your own risk. The author is not responsible for any financial losses caused by the use of this program. Always understand the risks associated with automated trading and API interaction.
+
+---
