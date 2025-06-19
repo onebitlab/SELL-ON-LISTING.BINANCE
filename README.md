@@ -12,7 +12,7 @@ This Python script automatically places a limit sell order immediately after a n
 * **Smart Price and Quantity Calculation** — Applies Binance's `PRICE_FILTER` and `LOT_SIZE` to ensure your order meets exchange requirements.
 * **Infinite Price Retrieval Retries** — Continuously attempts to fetch the current price until successful or program interruption, with a configurable `price_check_interval` between attempts.
 * **Automatic Order Cancellation** — If the order isn't filled within a configurable `order_timeout`, it is cancelled.
-* **Graceful Shutdown** — API Key Pre-Checks — Verifies the validity of your API key and permissions before starting the main bot logic, preventing failed operations due to misconfiguration.
+* **API Key Pre-Checks** — Verifies the validity of your API key and permissions before starting the main bot logic, preventing failed operations due to misconfiguration.
 
 ## ⚙️ Configuration
 
