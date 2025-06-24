@@ -1,4 +1,4 @@
-# config.py
+# config_sample.py Rename this file to config.py and fill in your details. 
 
 # BINANCE API Credentials
 api_key = 'YOUR_BINANCE_API_KEY'        # Your Binance API Key
